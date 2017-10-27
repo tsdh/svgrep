@@ -2,6 +2,7 @@
 name = "svgrep"
 version = "0.1.0"
 authors = ["Tassilo Horn <tsdh@gnu.org>"]
+license = "GPL-3.0+"
 
 [dependencies]
 clap = "2.26.2"
