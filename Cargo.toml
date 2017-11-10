@@ -1,8 +1,12 @@
 [package]
 name = "svgrep"
 version = "1.0.0"
+description = "A grep-like utility for separated-values files written in Rust"
+homepage = "https://github.com/tsdh/svgrep"
+repository = "https://github.com/tsdh/svgrep.git"
 authors = ["Tassilo Horn <tsdh@gnu.org>"]
 license = "GPL-3.0+"
+
 
 [dependencies]
 clap = "2.27.1"
