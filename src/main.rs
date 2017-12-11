@@ -47,6 +47,7 @@ struct MatchExp {
 
 struct Config {
     separator: String,
+    trim: bool,
     match_exps: Vec<MatchExp>,
 }
 
@@ -65,7 +66,7 @@ impl MatchExp {
         }
     }
 
-    fn match_and_select(&self, row: &CSVRow, sep: &str) {
+    fn match_and_select(&self, row: &CSVRow, config: &Config) {
         let mut row_matches = self.rxs.is_empty() && self.cell_rxs.is_empty();
 
         row_matches = row_matches ||
@@ -79,7 +80,7 @@ impl MatchExp {
             });
 
         if row_matches {
-            row.print(&self.sel, sep);
+            row.print(&self.sel, config);
         }
     }
 }
@@ -97,11 +98,11 @@ impl CSVRow {
         }
     }
 
-    fn print(&self, cols: &CellSelect, sep: &str) {
+    fn print(&self, cols: &CellSelect, config: &Config) {
         match cols {
             &CellSelect::ALL => {
                 for (i, cell) in self.cells.iter().enumerate() {
-                    print!("({}) {}{} ", i, cell, sep);
+                    print!("({}) {}{} ", i, maybe_trim(cell, config.trim), config.separator);
                 }
             }
             &CellSelect::Some(ref cols) => {
@@ -109,9 +110,9 @@ impl CSVRow {
                     if i >= &self.cells.len() {
                         print!("<no col {}>", i);
                     } else {
-                        print!("({}) {}", i, self.cells[*i]);
+                        print!("({}) {}", i, maybe_trim(self.cells[*i].as_str(), config.trim));
                     }
-                    print!("{} ", sep);
+                    print!("{} ", config.separator);
                 }
             }
         }
@@ -122,6 +123,14 @@ impl CSVRow {
 lazy_static! {
     static ref NUMBER_RX: Regex = Regex::new(r"^\d+.*$").expect("Invalid Regex in the code!");
     static ref ASTERISK_RX: Regex = Regex::new([r"^",regex::escape("*").as_str(),"$"].join("").as_ref()).expect("Invalid Regex in the code!");
+}
+
+fn maybe_trim(cell: &str, trim: bool) -> &str {
+    if trim {
+        cell.trim()
+    } else {
+        cell
+    }
 }
 
 fn svgrep_file(file_name: &str, config: Config) {
@@ -142,7 +151,7 @@ fn svgrep_file(file_name: &str, config: Config) {
     })
     {
         for match_exp in match_exps {
-            match_exp.match_and_select(&row, &config.separator);
+            match_exp.match_and_select(&row, &config);
         }
     }
 }
@@ -230,6 +239,7 @@ fn build_config(opts: &ArgMatches) -> Config {
 
     Config {
         separator: String::from(opts.value_of(OPT_SEPARATOR).unwrap_or(";")),
+        trim: opts.is_present(OPT_TRIM),
         match_exps: opts.values_of(OPT_MATCH)
             .unwrap_or(clap::Values::default())
             .map(|match_val| build_match_exp(match_val, &match_char_cfg))
@@ -250,6 +260,7 @@ const OPT_MATCH: &'static str = "match";
 const OPT_MATCH_CONJ_CHAR: &'static str = "match-conj-char";
 const OPT_CELL_SELECT_CHAR: &'static str = "cell-select-char";
 const OPT_MATCHES_CHAR: &'static str = "matches-char";
+const OPT_TRIM: &'static str = "trim";
 
 fn parse_command_line<'a>() -> ArgMatches<'a> {
     App::new("svgrep -- Separated Values Grep")
@@ -306,5 +317,9 @@ fn parse_command_line<'a>() -> ArgMatches<'a> {
              .help(format!("{}\n{}",
                            "Separates the <col>=<regex> pairs in --match expressions from the cell selection." ,
                            "The default is @.").as_str()))
+        .arg(Arg::with_name(OPT_TRIM)
+             .short("t")
+             .long(OPT_TRIM)
+             .help("Trim the cell contents when printing."))
         .get_matches()
 }
