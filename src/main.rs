@@ -21,10 +21,10 @@ extern crate lazy_static;
 extern crate clap;
 extern crate regex;
 
-use std::fs::File;
-use std::io::BufReader;
-use std::io::prelude::*;
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::prelude::*;
+use std::io::BufReader;
 use std::process::exit;
 
 use clap::{App, Arg, ArgMatches};
@@ -69,15 +69,16 @@ impl MatchExp {
     fn match_and_select(&self, row: &CSVRow, config: &Config) {
         let mut row_matches = self.rxs.is_empty() && self.cell_rxs.is_empty();
 
-        row_matches = row_matches ||
-            self.cell_rxs.iter().all(|(cell_idx, rx)| {
+        row_matches = row_matches
+            || self.cell_rxs.iter().all(|(cell_idx, rx)| {
                 let cell = row.get_cell(*cell_idx);
                 cell.is_some() && rx.is_match(cell.unwrap())
             });
-        row_matches = row_matches &&
-            self.rxs.iter().all(|rx| {
-                row.cells.iter().any(|cell| rx.is_match(cell))
-            });
+        row_matches = row_matches
+            && self
+                .rxs
+                .iter()
+                .all(|rx| row.cells.iter().any(|cell| rx.is_match(cell)));
 
         if row_matches {
             row.print(&self.sel, config);
@@ -87,7 +88,9 @@ impl MatchExp {
 
 impl CSVRow {
     fn parse_line(line: String, sep: &str) -> CSVRow {
-        CSVRow { cells: line.split(sep).map(|s| String::from(s)).collect() }
+        CSVRow {
+            cells: line.split(sep).map(|s| String::from(s)).collect(),
+        }
     }
 
     fn get_cell(&self, idx: usize) -> Option<&str> {
@@ -102,7 +105,12 @@ impl CSVRow {
         match cols {
             &CellSelect::ALL => {
                 for (i, cell) in self.cells.iter().enumerate() {
-                    print!("({}) {}{} ", i, maybe_trim(cell, config.trim), config.separator);
+                    print!(
+                        "({}) {}{} ",
+                        i,
+                        maybe_trim(cell, config.trim),
+                        config.separator
+                    );
                 }
             }
             &CellSelect::Some(ref cols) => {
@@ -110,7 +118,11 @@ impl CSVRow {
                     if i >= &self.cells.len() {
                         print!("<no col {}>", i);
                     } else {
-                        print!("({}) {}", i, maybe_trim(self.cells[*i].as_str(), config.trim));
+                        print!(
+                            "({}) {}",
+                            i,
+                            maybe_trim(self.cells[*i].as_str(), config.trim)
+                        );
                     }
                     print!("{} ", config.separator);
                 }
@@ -122,7 +134,9 @@ impl CSVRow {
 
 lazy_static! {
     static ref NUMBER_RX: Regex = Regex::new(r"^\d+.*$").expect("Invalid Regex in the code!");
-    static ref ASTERISK_RX: Regex = Regex::new([r"^",regex::escape("*").as_str(),"$"].join("").as_ref()).expect("Invalid Regex in the code!");
+    static ref ASTERISK_RX: Regex =
+        Regex::new([r"^", regex::escape("*").as_str(), "$"].join("").as_ref())
+            .expect("Invalid Regex in the code!");
 }
 
 fn maybe_trim(cell: &str, trim: bool) -> &str {
@@ -146,9 +160,9 @@ fn svgrep_file(file_name: &str, config: Config) {
         &config.match_exps
     };
 
-    for row in buf_reader.lines().map(|l| {
-        CSVRow::parse_line(l.unwrap(), &config.separator)
-    })
+    for row in buf_reader
+        .lines()
+        .map(|l| CSVRow::parse_line(l.unwrap(), &config.separator))
     {
         for match_exp in match_exps {
             match_exp.match_and_select(&row, &config);
@@ -177,17 +191,15 @@ fn build_rxs(
                 let line_and_rx: Vec<&str> = clause.split(&match_char_cfg.matches_char).collect();
                 if NUMBER_RX.is_match(line_and_rx[0]) {
                     hm.insert(
-                        line_and_rx[0].parse::<usize>().expect(
-                            "Invalid match column!",
-                        ),
+                        line_and_rx[0]
+                            .parse::<usize>()
+                            .expect("Invalid match column!"),
                         Regex::new(line_and_rx[1]).expect("Invalid regex!"),
                     );
                 } else if ASTERISK_RX.is_match(line_and_rx[0]) {
                     v.push(Regex::new(line_and_rx[1]).expect("Invalid regex!"));
                 } else {
-                    error(
-                        format!("'{}' is no valid column spec!", line_and_rx[0]).as_str(),
-                    );
+                    error(format!("'{}' is no valid column spec!", line_and_rx[0]).as_str());
                 }
             }
 
@@ -216,9 +228,11 @@ fn build_match_exp(match_val: &str, match_char_cfg: &MatchCharCfg) -> MatchExp {
             "]+)?(?:",
             regex::escape(&match_char_cfg.cell_select_char).as_ref(),
             r"(\d+(,\d+)*))?$",
-        ].join("")
-            .as_ref(),
-    ).unwrap();
+        ]
+        .join("")
+        .as_ref(),
+    )
+    .unwrap();
 
     let captures = rx.captures(match_val).expect("Invalid --match expression!");
 
@@ -240,7 +254,8 @@ fn build_config(opts: &ArgMatches) -> Config {
     Config {
         separator: String::from(opts.value_of(OPT_SEPARATOR).unwrap_or(";")),
         trim: opts.is_present(OPT_TRIM),
-        match_exps: opts.values_of(OPT_MATCH)
+        match_exps: opts
+            .values_of(OPT_MATCH)
             .unwrap_or(clap::Values::default())
             .map(|match_val| build_match_exp(match_val, &match_char_cfg))
             .collect(),
