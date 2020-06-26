@@ -279,7 +279,7 @@ const OPT_TRIM: &'static str = "trim";
 
 fn parse_command_line<'a>() -> ArgMatches<'a> {
     App::new("svgrep -- Separated Values Grep")
-        .version("0.1.0")
+        .version("1.1.1")
         .about("Greps and extracts cells of CSV/TSV/*SV files")
         .author("Tassilo Horn <tsdh@gnu.org>")
         .arg(
