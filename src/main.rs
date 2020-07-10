@@ -23,8 +23,7 @@ extern crate regex;
 
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::prelude::*;
-use std::io::BufReader;
+use std::io::{self, BufRead, BufReader, Lines};
 use std::process::exit;
 
 use clap::{App, Arg, ArgMatches};
@@ -147,12 +146,17 @@ fn maybe_trim(cell: &str, trim: bool) -> &str {
     }
 }
 
-fn svgrep_file(file_name: &str, config: Config) {
-    let file = match File::open(file_name) {
-        Ok(file) => file,
-        Err(e) => panic!("{} when trying to read {}", e, file_name),
+fn line_iter(file_name: Option<&str>) -> Lines<Box<dyn BufRead>> {
+    let reader: Box<dyn BufRead> = match file_name {
+        None => Box::new(BufReader::new(io::stdin())),
+        Some(filename) => Box::new(BufReader::new(
+            File::open(filename).expect(format!("No file {}", filename).as_str()),
+        )),
     };
-    let buf_reader = BufReader::new(&file);
+    reader.lines()
+}
+
+fn svgrep_lines(lines: Lines<Box<dyn BufRead>>, config: Config) {
     let all_match = &vec![MatchExp::empty()];
     let match_exps = if config.match_exps.is_empty() {
         all_match
@@ -160,10 +164,7 @@ fn svgrep_file(file_name: &str, config: Config) {
         &config.match_exps
     };
 
-    for row in buf_reader
-        .lines()
-        .map(|l| CSVRow::parse_line(l.unwrap(), &config.separator))
-    {
+    for row in lines.map(|l| CSVRow::parse_line(l.unwrap(), &config.separator)) {
         for match_exp in match_exps {
             match_exp.match_and_select(&row, &config);
         }
@@ -188,18 +189,18 @@ fn build_rxs(
             let mut hm = HashMap::new();
 
             for clause in match_clauses {
-                let line_and_rx: Vec<&str> = clause.split(&match_char_cfg.matches_char).collect();
-                if NUMBER_RX.is_match(line_and_rx[0]) {
+                let col_and_rx: Vec<&str> = clause.split(&match_char_cfg.matches_char).collect();
+                if NUMBER_RX.is_match(col_and_rx[0]) {
                     hm.insert(
-                        line_and_rx[0]
+                        col_and_rx[0]
                             .parse::<usize>()
                             .expect("Invalid match column!"),
-                        Regex::new(line_and_rx[1]).expect("Invalid regex!"),
+                        Regex::new(col_and_rx[1]).expect("Invalid regex!"),
                     );
-                } else if ASTERISK_RX.is_match(line_and_rx[0]) {
-                    v.push(Regex::new(line_and_rx[1]).expect("Invalid regex!"));
+                } else if ASTERISK_RX.is_match(col_and_rx[0]) {
+                    v.push(Regex::new(col_and_rx[1]).expect("Invalid regex!"));
                 } else {
-                    error(format!("'{}' is no valid column spec!", line_and_rx[0]).as_str());
+                    error(format!("'{}' is no valid column spec!", col_and_rx[0]).as_str());
                 }
             }
 
@@ -246,8 +247,8 @@ fn build_match_exp(match_val: &str, match_char_cfg: &MatchCharCfg) -> MatchExp {
 
 fn build_config(opts: &ArgMatches) -> Config {
     let match_char_cfg = MatchCharCfg {
-        cell_select_char: String::from(opts.value_of(OPT_CELL_SELECT_CHAR).unwrap_or("@")),
-        match_conj_char: String::from(opts.value_of(OPT_MATCH_CONJ_CHAR).unwrap_or("&")),
+        cell_select_char: String::from(opts.value_of(OPT_SELECT_CHAR).unwrap_or("@")),
+        match_conj_char: String::from(opts.value_of(OPT_CONJ_CHAR).unwrap_or("&")),
         matches_char: String::from(opts.value_of(OPT_MATCHES_CHAR).unwrap_or("=")),
     };
 
@@ -264,35 +265,38 @@ fn build_config(opts: &ArgMatches) -> Config {
 
 fn main() {
     let opts = parse_command_line();
-
     let config = build_config(&opts);
-    svgrep_file(opts.value_of(OPT_INPUT_FILE).unwrap(), config);
+
+    let lines = line_iter(opts.value_of(OPT_FILE));
+    svgrep_lines(lines, config);
 }
 
-const OPT_INPUT_FILE: &'static str = "INPUT_FILE";
+const OPT_FILE: &'static str = "FILE";
 const OPT_SEPARATOR: &'static str = "separator";
 const OPT_MATCH: &'static str = "match";
-const OPT_MATCH_CONJ_CHAR: &'static str = "match-conj-char";
-const OPT_CELL_SELECT_CHAR: &'static str = "cell-select-char";
+const OPT_CONJ_CHAR: &'static str = "conj-char";
+const OPT_SELECT_CHAR: &'static str = "cell-select-char";
 const OPT_MATCHES_CHAR: &'static str = "matches-char";
 const OPT_TRIM: &'static str = "trim";
+const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
 fn parse_command_line<'a>() -> ArgMatches<'a> {
     App::new("svgrep -- Separated Values Grep")
-        .version("1.1.1")
+        .version(VERSION.unwrap_or("<version unknown>"))
         .about("Greps and extracts cells of CSV/TSV/*SV files")
         .author("Tassilo Horn <tsdh@gnu.org>")
         .arg(
-            Arg::with_name(OPT_INPUT_FILE)
-                .help("The separated values file")
-                .required(true),
+            Arg::with_name(OPT_FILE)
+                .help("The separated values file. If none is given, reads from stdin.")
+                .required(false),
         )
         .arg(
             Arg::with_name(OPT_SEPARATOR)
-                .short("S")
+                .short("s")
                 .long(OPT_SEPARATOR)
-                .help("Sets the separator to be used (default: ';')")
-                .takes_value(true),
+                .takes_value(true)
+                .value_name("char")
+                .help("Sets the separator to be used (default: ';')"),
         )
         .arg(
             Arg::with_name(OPT_MATCH)
@@ -302,12 +306,14 @@ fn parse_command_line<'a>() -> ArgMatches<'a> {
                 .multiple(true)
                 .help(
                     format!(
-                        "{}\n{}\n{}\n{}\n{}",
-                        "Sets the match-and-select expression.",
-                        "Syntax: <col>=<regex>(&<col>=<regex>)+@<disp_cols>",
+                        "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+                        "Sets the match-and-select expression.\n",
+                        "Syntax:\n<col>=<regex>(&<col>=<regex>)+@<disp_cols>",
                         "<col> is a natural number or * meaning any column.",
-                        "<regex> is a regular expression matched against the cells at column <col>.",
-                        "<disp_cols> is a comma-separated list of columns to display, defaulting to all."
+                        "<regex> is a regex matched against the cells at column <col>.",
+                        "<disp_cols> is a comma-separated list of columns to display (defaul: all).",
+                        "\n--match '1=foo&2=bar' acts as logical AND wheras multiple expressions like",
+                        "--match '1=foo' '2=bar' act as a logical OR."
                     ).as_str(),
                 ),
         )
@@ -315,23 +321,26 @@ fn parse_command_line<'a>() -> ArgMatches<'a> {
              .short("=")
              .long(OPT_MATCHES_CHAR)
              .takes_value(true)
+             .value_name("char")
              .help(format!("{}\n{}",
                            "Separates a <col> from the <regex> in --match expressions.",
-                           "The default is =.").as_str()))
-        .arg(Arg::with_name(OPT_MATCH_CONJ_CHAR)
+                           "(default: =).").as_str()))
+        .arg(Arg::with_name(OPT_CONJ_CHAR)
              .short("&")
-             .long(OPT_MATCH_CONJ_CHAR)
+             .long(OPT_CONJ_CHAR)
              .takes_value(true)
+             .value_name("char")
              .help(format!("{}\n{}",
-                           "Separates multiple <col>=<regex> pairs in --match expressions to form a conjunction." ,
-                           "The default is &.").as_str()))
-        .arg(Arg::with_name(OPT_CELL_SELECT_CHAR)
+                           "Separates multiple <col>=<regex> pairs in --match expressions",
+                           "to form a conjunction (default: &).").as_str()))
+        .arg(Arg::with_name(OPT_SELECT_CHAR)
              .short("@")
-             .long(OPT_CELL_SELECT_CHAR)
+             .long(OPT_SELECT_CHAR)
              .takes_value(true)
+             .value_name("char")
              .help(format!("{}\n{}",
-                           "Separates the <col>=<regex> pairs in --match expressions from the cell selection." ,
-                           "The default is @.").as_str()))
+                           "Separates the <col>=<regex> pairs in --match expressions from",
+                           "the column display selection (default: @).").as_str()))
         .arg(Arg::with_name(OPT_TRIM)
              .short("t")
              .long(OPT_TRIM)
