@@ -57,7 +57,7 @@ struct MatchCharCfg {
 }
 
 impl MatchExp {
-    fn empty() -> MatchExp {
+    fn new() -> MatchExp {
         MatchExp {
             rxs: vec![],
             cell_rxs: HashMap::new(),
@@ -86,7 +86,7 @@ impl MatchExp {
 }
 
 impl CSVRow {
-    fn parse_line(line: String, sep: &str) -> CSVRow {
+    fn from_line(line: String, sep: &str) -> CSVRow {
         CSVRow {
             cells: line.split(sep).map(|s| String::from(s)).collect(),
         }
@@ -157,14 +157,14 @@ fn line_iter(file_name: Option<&str>) -> Lines<Box<dyn BufRead>> {
 }
 
 fn svgrep_lines(lines: Lines<Box<dyn BufRead>>, config: Config) {
-    let all_match = &vec![MatchExp::empty()];
+    let all_match = &vec![MatchExp::new()];
     let match_exps = if config.match_exps.is_empty() {
         all_match
     } else {
         &config.match_exps
     };
 
-    for row in lines.map(|l| CSVRow::parse_line(l.unwrap(), &config.separator)) {
+    for row in lines.map(|l| CSVRow::from_line(l.unwrap(), &config.separator)) {
         for match_exp in match_exps {
             match_exp.match_and_select(&row, &config);
         }
