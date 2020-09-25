@@ -1,6 +1,6 @@
 [package]
 name = "svgrep"
-version = "2.0.0"
+version = "2.0.1"
 description = "A grep-like utility for separated-values files written in Rust"
 homepage = "https://github.com/tsdh/svgrep"
 repository = "https://github.com/tsdh/svgrep.git"
@@ -9,6 +9,6 @@ license = "GPL-3.0+"
 
 
 [dependencies]
-clap = "2.33.1"
+clap = "2.33.3"
 regex = "1.3.9"
 lazy_static = "1.4.0"

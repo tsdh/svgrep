@@ -1,6 +1,6 @@
 // A grep-like tool for separated values files.
 //
-// Copyright (C) 2017  Tassilo Horn <tsdh@gnu.org>
+// Copyright (C) 2017-2020  Tassilo Horn <tsdh@gnu.org>
 //
 // This program is free software; you can redistribute it and/or modify it
 // under the terms of the GNU General Public License as published by the Free
@@ -102,17 +102,12 @@ impl CSVRow {
 
     fn print(&self, cols: &CellSelect, config: &Config) {
         match cols {
-            &CellSelect::ALL => {
+            CellSelect::ALL => {
                 for (i, cell) in self.cells.iter().enumerate() {
-                    print!(
-                        "({}) {}{} ",
-                        i,
-                        maybe_trim(cell, config.trim),
-                        config.separator
-                    );
+                    print!("({}) {} ", i, maybe_trim(cell, config.trim));
                 }
             }
-            &CellSelect::Some(ref cols) => {
+            CellSelect::Some(ref cols) => {
                 for i in cols {
                     if i >= &self.cells.len() {
                         print!("<no col {}>", i);
